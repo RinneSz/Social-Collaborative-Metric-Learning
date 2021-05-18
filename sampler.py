@@ -5,7 +5,6 @@ from scipy.sparse import lil_matrix
 
 def rating_sample_function(random_seed, user_item_matrix, batch_size, n_negative, result_queue, check_negative=True):
     """
-
     :param user_item_matrix: the user-item matrix for positive user-item pairs
     :param batch_size: number of samples to return
     :param n_negative: number of negative samples per user-positive-item pair
@@ -40,10 +39,9 @@ def rating_sample_function(random_seed, user_item_matrix, batch_size, n_negative
 
 def social_sample_function(random_seed, social_matrix, batch_size, n_negative, result_queue, check_negative=True):
     """
-
-    :param user_item_matrix: the user-item matrix for positive user-item pairs
+    :param social_matrix: the user-user social matrix for positive user-user pairs
     :param batch_size: number of samples to return
-    :param n_negative: number of negative samples per user-positive-item pair
+    :param n_negative: number of negative samples per user-positive-user pair
     :param result_queue: the output queue
     :return: None
     """
@@ -103,7 +101,7 @@ class rating_WarpSampler(object):
 
 class social_WarpSampler(object):
     """
-    A generator that, in parallel, generates tuples: user-positive-item pairs, negative-items
+    A generator that, in parallel, generates tuples: user-positive-user pairs, negative-users
 
     of the shapes (Batch Size, 2) and (Batch Size, N_Negative)
     """

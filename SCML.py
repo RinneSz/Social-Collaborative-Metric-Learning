@@ -13,11 +13,6 @@ import math
 
 
 def doublewrap(function):
-    """
-    A decorator decorator, allowing to use the decorator to be used without
-    parentheses if not arguments are provided. All arguments must be optional.
-    """
-
     @functools.wraps(function)
     def decorator(*args, **kwargs):
         if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
@@ -30,15 +25,6 @@ def doublewrap(function):
 
 @doublewrap
 def define_scope(function, scope=None, *args, **kwargs):
-    """
-    A decorator for functions that define TensorFlow operations. The wrapped
-    function will only be executed once. Subsequent calls to it will directly
-    return the result so that operations are added to the graph only once.
-    The operations added by the function live within a tf.variable_scope(). If
-    this decorator is used with arguments, they will be forwarded to the
-    variable scope. The scope name defaults to the name of the wrapped
-    function.
-    """
     attribute = '_cache_' + function.__name__
     name = scope or function.__name__
 
@@ -53,7 +39,7 @@ def define_scope(function, scope=None, *args, **kwargs):
     return decorator
 
 
-class CML(object):
+class SCML(object):
     def __init__(self,
                  manifold_name,
                  n_users,
@@ -64,19 +50,8 @@ class CML(object):
                  master_learning_rate=0.1,
                  clip_norm=1.0,
                  lambda_social=0.0,
-                 center_init=False
+                 center_init=True
                  ):
-        """
-
-        :param n_users: number of users i.e. |U|
-        :param n_items: number of items i.e. |V|
-        :param embed_dim: embedding size i.e. K (default 20)
-        :param rating_margin: hinge loss threshold for rating part
-        :param social_margin: hinge loss threshold for social part
-        :param master_learning_rate: master learning rate for AdaGrad
-        :param clip_norm: clip norm threshold (default 1.0)
-        """
-
         self.center_init = center_init
         self.manifold_name = manifold_name
         self.manifold = getattr(manifolds, manifold_name)()
@@ -248,14 +223,15 @@ class CML(object):
         return hyp_users, hyp_items
 
 
-def optimize(model, rating_sampler, social_sampler, train, valid, test, neg_samples_list):
+def optimize(model, rating_sampler, social_sampler, train, valid, test):
     """
-    Optimize the model. TODO: implement early-stopping
+    Optimize the model.
     :param model: model to optimize
     :param rating_sampler: mini-batch sampler for rating part
     :param social_sampler: mini-batch sampler for social part
     :param train: train user-item matrix
     :param valid: validation user-item matrix
+    :param test: test user-item matrix
     :return: None
     """
     config = tf.ConfigProto()
@@ -289,7 +265,7 @@ def optimize(model, rating_sampler, social_sampler, train, valid, test, neg_samp
         valid_ndcgs = [[],[],[],[],[],[]]
 
         for user_chunk in toolz.partition_all(num_user_chunck, valid_users):
-            hrs_1,hrs_5,hrs_10,hrs_15,hrs_20,hrs_50,ndcgs_1,ndcgs_5,ndcgs_10,ndcgs_15,ndcgs_20,ndcgs_50=validation_recall.eval(sess,user_chunk,neg_samples_list)
+            hrs_1,hrs_5,hrs_10,hrs_15,hrs_20,hrs_50,ndcgs_1,ndcgs_5,ndcgs_10,ndcgs_15,ndcgs_20,ndcgs_50=validation_recall.eval(sess,user_chunk)
             valid_hrs[0].extend(hrs_1)
             valid_hrs[1].extend(hrs_5)
             valid_hrs[2].extend(hrs_10)
@@ -327,7 +303,7 @@ def optimize(model, rating_sampler, social_sampler, train, valid, test, neg_samp
 
             for user_chunk in toolz.partition_all(num_user_chunck, test_users):
                 hrs_1, hrs_5, hrs_10, hrs_15, hrs_20, hrs_50, ndcgs_1, ndcgs_5, ndcgs_10, ndcgs_15, ndcgs_20, ndcgs_50 = test_recall.eval(
-                    sess, user_chunk,neg_samples_list)
+                    sess, user_chunk)
                 test_hrs[0].extend(hrs_1)
                 test_hrs[1].extend(hrs_5)
                 test_hrs[2].extend(hrs_10)
@@ -403,16 +379,13 @@ def optimize(model, rating_sampler, social_sampler, train, valid, test, neg_samp
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--manifold', '-m', choices=['Euclidean', 'Hyperboloid', 'PoincareBall'], default='Euclidean',
+    parser.add_argument('--manifold', '-m', choices=['Euclidean', 'PoincareBall'], default='Euclidean',
                         help='embedding manifold')
-    parser.add_argument('--dimension', '-d', type=int, default=10, help='number of dimensions of the latent factors')
-    parser.add_argument('--iteration', '-i', type=int, default=1000, help='number of iterations')
+    parser.add_argument('--dimension', '-d', type=int, default=10, help='latent size of embeddings')
     parser.add_argument('--lr', '-l', type=float, default=0.001, help='learning rate')
-    parser.add_argument('--decay', '-ld', type=int, default=None,
-                        help='the iteration where lr decreases by multiplying 0.1')
     parser.add_argument('--dataset', '-ds', choices=['ciao', 'epinions'], help='name of the dataset')
-    parser.add_argument('--cuda', choices=['0', '1'], default='0')
-    parser.add_argument('--random_seed', type=int, default=1000)
+    parser.add_argument('--cuda', type=str, default='0')
+    # parser.add_argument('--random_seed', type=int, default=1000)
     parser.add_argument('--rating_margin', type=float, default=0.0, help='margin of the rating loss')
     parser.add_argument('--social_margin', type=float, default=0.0, help='margin of the social loss')
     parser.add_argument('--Lambda', type=float, default=0.0, help='lambda of the social loss')
@@ -429,9 +402,9 @@ if __name__ == '__main__':
     N_NEGATIVE = 2
     EVALUATION_EVERY_N_BATCHES = 500
     if dataset == 'ciao':
-        data_path = '/home/uqhche32/sixiao/datasets/ciao/topn'
+        data_path = 'dataset/ciao'
     elif dataset == 'epinions':
-        data_path = '/home/uqhche32/sixiao/datasets/epinions/topn'
+        data_path = 'dataset/epinions'
     f = open(os.path.join(data_path, 'rating_test_adj.pkl'), 'rb')
     rating_test = pkl.load(f).todok()
     f.close()
@@ -443,9 +416,6 @@ if __name__ == '__main__':
     f.close()
     f = open(os.path.join(data_path, 'social_adj.pkl'), 'rb')
     social_adj = pkl.load(f).todok()
-    f.close()
-    f = open(os.path.join(data_path, 'neg_samples_list.pkl'), 'rb')
-    neg_samples_list = pkl.load(f)
     f.close()
     n_users, n_items = rating_train.shape
 
@@ -460,13 +430,13 @@ if __name__ == '__main__':
     elif manifold_name == 'PoincareBall':
         CLIP_NORM = 3.0
     else:
-        CLIP_NORM = 14.9
+        raise ValueError('Invalid manifold!')
     CENTER_INIT = True
     RATING_MARGIN = args.rating_margin
     SOCIAL_MARGIN = args.social_margin
     LAMBDA = args.Lambda
 
-    model = CML(manifold_name,
+    model = SCML(manifold_name,
                 n_users,
                 n_items,
                 # size of embedding
@@ -478,10 +448,12 @@ if __name__ == '__main__':
                 clip_norm=CLIP_NORM,
                 # learning rate for AdaGrad
                 master_learning_rate=args.lr,
+                # weight term of the social loss
                 lambda_social=LAMBDA,
+                # whether to initialize the embeddings close to the center
                 center_init=CENTER_INIT
                 )
 
     end = time.time()
     print('preprocessing complete in %ds' % (end-start))
-    optimize(model, rating_sampler, social_sampler, rating_train, rating_valid, rating_test, neg_samples_list)
+    optimize(model, rating_sampler, social_sampler, rating_train, rating_valid, rating_test)
